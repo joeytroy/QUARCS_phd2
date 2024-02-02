@@ -730,9 +730,9 @@ void Guider::UpdateImageDisplay(usImage *pImage)
         pImage = m_pCurrentImage;
     }
 
-    Debug.Write(wxString::Format("UpdateImageDisplay: Size=(%d,%d) min=%u, max=%u, med=%u, FiltMin=%u, FiltMax=%u, Gamma=%.3f\n",
-                                 pImage->Size.x, pImage->Size.y, pImage->MinADU, pImage->MaxADU, pImage->MedianADU,
-                                 pImage->FiltMin, pImage->FiltMax, pFrame->Stretch_gamma));
+    wxString imageInfo = wxString::Format("UpdateImageDisplay: Size=(%d,%d), bitdepth=%d, min=%u, max=%u, med=%u, FiltMin=%u, FiltMax=%u, Gamma=%.3f\n",
+                                 pImage->Size.x, pImage->Size.y, pImage->BitsPerPixel, pImage->MinADU, pImage->MaxADU, pImage->MedianADU,
+                                 pImage->FiltMin, pImage->FiltMax, pFrame->Stretch_gamma);
 
     Refresh();
     Update();
@@ -1249,6 +1249,7 @@ void Guider::UpdateGuideState(usImage *pImage, bool bStopping)
 {
     wxString statusMessage;
     bool someException = false;
+    pFrame->StarLostAlert = false;
 
     try
     {
@@ -1337,9 +1338,15 @@ void Guider::UpdateGuideState(usImage *pImage, bool bStopping)
 
                     wxColor prevColor = GetBackgroundColour();
                     SetBackgroundColour(wxColour(64,0,0));
+                    DEBUG_INFO("guider.cpp | UpdateGuideState | STAR LOST ALERT YES ");
                     ClearBackground();
+                    
                     if (pFrame->GetBeepForLostStar())
-                        wxBell();
+                    {
+                        pFrame->StarLostAlert = true;
+                        wxBell();   //QHY TODO  output the beep signal to shared memory
+                    }
+
                     wxMilliSleep(100);
                     SetBackgroundColour(prevColor);
                     break;

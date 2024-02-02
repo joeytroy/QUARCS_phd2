@@ -49,10 +49,6 @@
 
 #include <IOKit/serial/IOSerialKeys.h>
 
-#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 120000
-# define IOMainPort IOMasterPort
-#endif
-
 #define IOSSDATALAT    _IOW('T', 0, unsigned long)
 
 static kern_return_t createSerialIterator(io_iterator_t *serialIterator)
@@ -60,9 +56,9 @@ static kern_return_t createSerialIterator(io_iterator_t *serialIterator)
     kern_return_t   kernResult;
     mach_port_t     masterPort;
     CFMutableDictionaryRef  classesToMatch;
-    if ((kernResult = IOMainPort(0, &masterPort)) != KERN_SUCCESS)
+    if ((kernResult = IOMasterPort(0, &masterPort)) != KERN_SUCCESS)
     {
-        printf("IOMainPort returned %d\n", kernResult);
+        printf("IOMasterPort returned %d\n", kernResult);
         return kernResult;
     }
     if ((classesToMatch = IOServiceMatching(kIOSerialBSDServiceValue)) == NULL)
@@ -106,24 +102,28 @@ Mount::MOVE_RESULT ScopeGCUSBST4::Guide(GUIDE_DIRECTION direction, int duration)
     char buf[16];
     switch (direction) {
         case NORTH:
-            snprintf(buf, sizeof(buf), ":Mg0%4d#", duration);
+            sprintf(buf,":Mg0%4d#",duration);
             break;
         case SOUTH:
-            snprintf(buf, sizeof(buf), ":Mg1%4d#", duration);
+            sprintf(buf,":Mg1%4d#",duration);
             break;
         case EAST:
-            snprintf(buf, sizeof(buf), ":Mg2%4d#", duration);
+            sprintf(buf,":Mg2%4d#",duration);
             break;
         case WEST:
-            snprintf(buf, sizeof(buf), ":Mg3%4d#", duration);
+            sprintf(buf,":Mg3%4d#",duration);
             break;
         case NONE:
             return MOVE_OK;
     }
+//  wxMessageBox(wxString::Format("Sending -%s-",buf));
     int num_bytes = write(portFID,buf,strlen(buf));
     if (num_bytes == -1) {
         pFrame->Alert(wxString::Format(_("Error writing to GC USB ST4: %s(%d)"),_U(strerror(errno)),errno));
+//      close(portFID);
+//      return false;
     }
+//  wxMessageBox(wxString::Format("send %d vs %d",strlen(buf),num_bytes));
     WorkerThread::MilliSleep(duration + 50);
     return MOVE_OK;
 }

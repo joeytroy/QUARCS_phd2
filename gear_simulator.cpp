@@ -50,6 +50,12 @@
 #include <wx/wfstream.h>
 #include <wx/txtstrm.h>
 #include <wx/tokenzr.h>
+#include <thread>
+
+#include <iostream>
+#include <mutex>
+
+std::mutex sendMutex;
 
 #define SIMMODE 3   // 1=FITS, 2=BMP, 3=Generate
 // #define SIMDEBUG
@@ -1411,6 +1417,48 @@ bool CameraSimulator::Capture(int duration, usImage& img, int options, const wxR
 
 bool CameraSimulator::ST4PulseGuideScope(int direction, int duration)
 {
+    DEBUG_INFO("-----------------------------Begain----------------------------- %d",pFrame->ControlStatus);
+    std::lock_guard<std::mutex> lock(sendMutex);
+    // 记录开始时间点
+    auto startTime = std::chrono::steady_clock::now();
+
+    // 循环等待直到 ControlStatus 变为 0 或超过 5 秒
+    while (pFrame->ControlStatus != 0)
+    {
+        // 计算经过的时间
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime).count();
+        // 如果超过 5 秒，强制将 ControlStatus 设置为 0
+        if (elapsedTime >= 5)
+        {
+            pFrame->ControlStatus = 0;
+            break; // 跳出循环
+        }
+        DEBUG_INFO("ST4PulseGuideScope_Simulator_Status %d",pFrame->ControlStatus);
+        // 添加适当的延迟
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    DEBUG_INFO("ST4PulseGuideScope_Simulator_Status %d",pFrame->ControlStatus);
+
+    pFrame->sdk_direction=direction;
+    pFrame->sdk_duration=duration;
+
+    unsigned int mem_offset=1024;
+ 
+    mem_offset=mem_offset+sizeof(unsigned int); 
+    mem_offset=mem_offset+sizeof(unsigned int); 
+    mem_offset=mem_offset+sizeof(unsigned char); 
+
+    int ControlInstruct = (pFrame->ControlNum << 24) | (pFrame->sdk_direction << 12) | pFrame->sdk_duration;
+
+    memcpy(pFrame->qBuffer+mem_offset,&ControlInstruct,sizeof(int));
+ 	mem_offset=mem_offset+sizeof(int); 
+    pFrame->getTimeNow(pFrame->ControlNum);
+    DEBUG_INFO("ST4PulseGuideScope_Simulator %d,%d,%d",pFrame->ControlNum,direction,duration);
+
+    pFrame->ControlNum++;
+    pFrame->ControlStatus = 1;
+
     // Following must take into account how the render_star function works.  Render_star uses camera binning explicitly, so
     // relying only on image scale in computing d creates distances that are too small by a factor of <binning>
     double d = SimCamParams::guide_rate * Binning * duration / (1000.0 * SimCamParams::image_scale);
@@ -1533,7 +1581,7 @@ bool CameraSimulator::Capture(int duration, usImage& img, int options, const wxR
     static int frame = 0;
     static int step = 1;
     char fname[256];
-    snprintf(fname, sizeof(fname), "/Users/stark/dev/PHD/simimg/DriftSim_%d.fit", frame);
+    sprintf(fname,"/Users/stark/dev/PHD/simimg/DriftSim_%d.fit",frame);
     if (!PHD_fits_open_diskfile(&fptr, fname, READONLY, &status))
     {
         if (fits_get_hdu_type(fptr, &hdutype, &status) || hdutype != IMAGE_HDU) {

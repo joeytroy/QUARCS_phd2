@@ -54,11 +54,12 @@ ScopeOnboardST4::~ScopeOnboardST4(void)
 bool ScopeOnboardST4::ConnectOnboardST4(OnboardST4 *pOnboardHost)
 {
     bool bError = false;
-
+    int errNum = 0;
     try
     {
         if (!pOnboardHost)
         {
+            errNum = 1;
             throw ERROR_INFO("Attempt to Connect OnboardST4 mount with pOnboardHost == NULL");
         }
 
@@ -71,11 +72,13 @@ bool ScopeOnboardST4::ConnectOnboardST4(OnboardST4 *pOnboardHost)
 
         if (!m_pOnboardHost->ST4HasGuideOutput())
         {
-            throw ERROR_INFO("Attempt to Connect Onboard ST4 mount when host does not have guide output");
+            errNum = 2;
+            // throw ERROR_INFO("Attempt to Connect Onboard ST4 mount when host does not have guide output");
         }
 
         if (!m_pOnboardHost->ST4HostConnected())
         {
+            errNum = 3;
             throw ERROR_INFO("Attempt to Connect Onboard ST4 mount when host is not connected");
         }
 
@@ -83,6 +86,7 @@ bool ScopeOnboardST4::ConnectOnboardST4(OnboardST4 *pOnboardHost)
     }
     catch (const wxString& Msg)
     {
+        DEBUG_INFO("Why connectST4 failed ? |%d ", errNum);
         POSSIBLY_UNUSED(Msg);
         bError = true;
     }

@@ -1157,6 +1157,21 @@ static void CalibrationStatus(CalibrationStepInfo& info, const wxString& msg)
 {
     info.msg = msg;
     pFrame->StatusMsg(info.msg);
+
+    // unsigned int mem_offset=1024;
+    // mem_offset=mem_offset+sizeof(unsigned int); 
+    // mem_offset=mem_offset+sizeof(unsigned int); 
+    // mem_offset=mem_offset+sizeof(unsigned int); 
+    // memcpy(pFrame->qBuffer+mem_offset,&pFrame->direction_,sizeof(char));
+ 	// mem_offset=mem_offset+sizeof(char); 
+    // memcpy(pFrame->qBuffer+mem_offset,&pFrame->step_,sizeof(int));
+ 	// mem_offset=mem_offset+sizeof(int); 
+    // memcpy(pFrame->qBuffer+mem_offset,&pFrame->dist_,sizeof(double));
+ 	// mem_offset=mem_offset+sizeof(double); 
+    // DEBUG_INFO("scope.cpp | CalibrationStatus | direction: %s",pFrame->direction_);
+    // DEBUG_INFO("scope.cpp | CalibrationStatus | step: %d",pFrame->step_);
+    // DEBUG_INFO("scope.cpp | CalibrationStatus | dist: %f",pFrame->dist_);
+
     EvtServer.NotifyCalibrationStep(info);
 }
 
@@ -1204,6 +1219,10 @@ bool Scope::UpdateCalibrationState(const PHD_Point& currentLocation)
                 CalibrationStepInfo info(this, _T("West"), m_calibrationSteps, dX, dY, currentLocation, dist);
                 GuideLog.CalibrationStep(info);
                 m_calibrationDetails.raSteps.push_back(wxRealPoint(dX, dY));
+
+                pFrame->direction_='w';
+                pFrame->step_=m_calibrationSteps;
+                pFrame->dist_=dist;
 
                 if (dist < dist_crit)
                 {
@@ -1279,6 +1298,10 @@ bool Scope::UpdateCalibrationState(const PHD_Point& currentLocation)
                 CalibrationStepInfo info(this, _T("East"), m_calibrationSteps, dX, dY, currentLocation, dist);
                 GuideLog.CalibrationStep(info);
                 m_calibrationDetails.raSteps.push_back(wxRealPoint(dX, dY));
+
+                pFrame->direction_='e';
+                pFrame->step_=m_calibrationSteps;
+                pFrame->dist_=dist;
 
                 if (m_recenterRemaining > 0)
                 {
@@ -1467,6 +1490,10 @@ bool Scope::UpdateCalibrationState(const PHD_Point& currentLocation)
                 GuideLog.CalibrationStep(info);
                 m_calibrationDetails.decSteps.push_back(wxRealPoint(dX, dY));
 
+                pFrame->direction_='n';
+                pFrame->step_=m_calibrationSteps;
+                pFrame->dist_=dist;
+
                 if (dist < dist_crit)
                 {
                     if (m_calibrationSteps++ > MAX_CALIBRATION_STEPS)
@@ -1557,6 +1584,10 @@ bool Scope::UpdateCalibrationState(const PHD_Point& currentLocation)
                 CalibrationStepInfo info(this, _T("South"), m_calibrationSteps, dX, dY, currentLocation, dist);
                 GuideLog.CalibrationStep(info);
                 m_calibrationDetails.decSteps.push_back(wxRealPoint(dX, dY));
+
+                pFrame->direction_='s';
+                pFrame->step_=m_calibrationSteps;
+                pFrame->dist_=dist;
 
                 if (m_recenterRemaining > 0)
                 {

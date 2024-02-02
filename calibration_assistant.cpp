@@ -828,8 +828,7 @@ void CalibrationAssistant::EvaluateCalibration(void)
         TheScope()->GetLastCalibration(&newCal);
         CalibrationDetails newDetails;
         TheScope()->LoadCalibrationDetails(&newDetails);
-        // See if we already triggered a sanity check alert on this last calibration
-        acceptableRslt = (newDetails.lastIssue == CalibrationIssueType::CI_None || newDetails.lastIssue == CalibrationIssueType::CI_Different);
+        acceptableRslt = (newDetails.lastIssue == CalibrationIssueType::CI_None);
 
         // RA/Dec rates should be related by cos(dec) but don't check if Dec is too high or Dec guiding is disabled.  Also don't check if DecComp
         // is disabled because a Sitech controller might be monkeying around with the apparent rates
@@ -871,7 +870,7 @@ void CalibrationAssistant::EvaluateCalibration(void)
             {
                 reasons.push_back(_("Rates"));
                 goodRslt = false;
-                acceptableRslt = acceptableRslt && fabs(expectedRatio - actualRatio) < CAL_ALERT_AXISRATES_TOLERANCE;
+                acceptableRslt = acceptableRslt && (expectedRatio - actualRatio) < CAL_ALERT_AXISRATES_TOLERANCE;
             }
         }
         if (fabs(degrees(newCal.declination)) > 60)

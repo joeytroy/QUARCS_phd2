@@ -109,7 +109,6 @@ public:
     void Register(IDispatch *idisp);
     void Register(const DispatchObj& obj) { Register(obj.IDisp()); }
     void Unregister();
-    bool IsRegistered() const { return m_dwCookie != 0; }
     IDispatch *Get() const
     {
         IDispatch *idisp = 0;

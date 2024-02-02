@@ -47,6 +47,11 @@
 #include <algorithm>
 #include <memory>
 
+//shared memory
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
 #include <wx/filesys.h>
 #include <wx/fs_zip.h>
 #include <wx/artprov.h>
@@ -54,6 +59,9 @@
 #include <wx/dnd.h>
 #include <wx/textwrapper.h>
 #include "wx/valnum.h"
+
+//shared memory
+#define BUFSZ 16590848//  8296448   //1024+1024+1920*1080*4(frane1)+ 1920*1080*4(frame2)
 
 static const int DefaultNoiseReductionMethod = 0;
 static const double DefaultDitherScaleFactor = 1.00;
@@ -72,6 +80,7 @@ wxDEFINE_EVENT(REQUEST_MOUNT_MOVE_EVENT, wxCommandEvent);
 wxDEFINE_EVENT(WXMESSAGEBOX_PROXY_EVENT, wxCommandEvent);
 wxDEFINE_EVENT(STATUSBAR_ENQUEUE_EVENT, wxCommandEvent);
 wxDEFINE_EVENT(STATUSBAR_TIMER_EVENT, wxTimerEvent);
+wxDEFINE_EVENT(SHM_TIMER_EVENT, wxTimerEvent);
 wxDEFINE_EVENT(SET_STATUS_TEXT_EVENT, wxThreadEvent);
 wxDEFINE_EVENT(ALERT_FROM_THREAD_EVENT, wxThreadEvent);
 wxDEFINE_EVENT(RECONNECT_CAMERA_EVENT, wxThreadEvent);
@@ -170,6 +179,7 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
     EVT_THREAD(UPDATER_EVENT, MyFrame::OnUpdaterStateChanged)
     EVT_COMMAND(wxID_ANY, REQUEST_MOUNT_MOVE_EVENT, MyFrame::OnRequestMountMove)
     EVT_TIMER(STATUSBAR_TIMER_EVENT, MyFrame::OnStatusBarTimerEvent)
+    EVT_TIMER(SHM_TIMER_EVENT, MyFrame::OnShmTimerEvent) 
 
     EVT_AUI_PANE_CLOSE(MyFrame::OnPanelClose)
 wxEND_EVENT_TABLE()
@@ -214,6 +224,7 @@ MyFrame::MyFrame()
     m_bookmarkLockPosAccel(0),
     pStatsWin(nullptr)
 {
+    DEBUG_INFO("All start here: MyFrame::MyFrame()");
     m_mgr.SetManagedWindow(this);
 
     m_frameCounter = 0;
@@ -223,6 +234,9 @@ MyFrame::MyFrame()
     StartWorkerThread(m_pSecondaryWorkerThread);
 
     m_statusbarTimer.SetOwner(this, STATUSBAR_TIMER_EVENT);
+
+    //shared memory
+    shmTimer.SetOwner(this,SHM_TIMER_EVENT);
 
     SocketServer = nullptr;
 
@@ -442,12 +456,40 @@ MyFrame::MyFrame()
 
     // this forces force a resize of MainToolbar in case size changed from the saved perspective
     MainToolbar->Realize();
+
+    //shared memory
+    key_t key;
+
+    key = ftok("./", 2015);
+    if (key == -1)
+    {
+        DEBUG_INFO("myframe.cpp | shared memory | ftok ERROR");
+    }
+
+    key = 0x90;
+
+    shmid = shmget(key, BUFSZ, IPC_CREAT | 0666);
+
+    if (shmid == -1)
+    {
+        DEBUG_INFO("myframe.cpp | shared memory | shmid shmget ERROR");
+    }
+
+    qBuffer = (char *)shmat(shmid, NULL, 0);
+
+    bzero(qBuffer, BUFSZ); // Clear All shared memory
+    strcpy(qBuffer, "shared memory test\n");
+
+    system("ipcs -m"); // check shared memory
+    shmTimer.Start(10, wxTIMER_ONE_SHOT);
 }
 
 MyFrame::~MyFrame()
 {
     delete pGearDialog;
     pGearDialog = nullptr;
+    //shared memory
+    shmTimer.Stop();
 
     pAdvancedDialog->Destroy();
 
@@ -472,6 +514,8 @@ MyFrame::~MyFrame()
 
     delete m_showBookmarksAccel;
     delete m_bookmarkLockPosAccel;
+    //shared memory	
+    shmctl(shmid, IPC_RMID, NULL); //QIU delete the shared memory
 }
 
 void MyFrame::UpdateTitle()
@@ -635,6 +679,141 @@ int MyFrame::GetExposureDelay()
     return rslt;
 }
 
+// shared memory
+int MyFrame::CopyImageToShm(usImage *img)
+{
+    uint32_t mem_offset;
+    uint32_t image_length;
+    unsigned int X, Y;
+    unsigned char m_msg;
+    wxByte bitDepth;
+
+    wxSize t;
+    t = img->Size;
+    X = t.GetWidth();
+    Y = t.GetHeight();
+    bitDepth = img->BitsPerPixel;
+    image_length = img->NPixels * (img->BitsPerPixel / 8);
+
+    // parameter to shm
+    mem_offset = 1024;
+
+    memcpy(qBuffer + mem_offset, &X, sizeof(unsigned int));
+    mem_offset = mem_offset + sizeof(unsigned int);
+    memcpy(qBuffer + mem_offset, &Y, sizeof(unsigned int));
+    mem_offset = mem_offset + sizeof(unsigned int);
+    memcpy(qBuffer + mem_offset, &bitDepth, sizeof(unsigned char));
+    mem_offset = mem_offset + sizeof(unsigned char);
+
+    //
+
+    qBuffer[2047] = 0x01;
+
+    mem_offset = 2048;
+
+    // DEBUG_INFO("myframe.cpp | CopyImageToShm | image_length %d %d %d",image_length,X,Y);
+
+    if (image_length < BUFSZ - 1024 - 1024)
+    {
+        memcpy(qBuffer + mem_offset, img->ImageData, image_length); // fps++
+    }
+    else
+    {
+        image_length = BUFSZ - 1024 - 1024;
+        memcpy(qBuffer + mem_offset, img->ImageData, image_length); // fps++
+        DEBUG_INFO("myframe.cpp | warning: image size exceed the shared memory buffer");
+    }
+
+    qBuffer[2047] = 0x02;
+
+    // DEBUG_INFO("myframe.cpp | CopyImageToShm Npixels %d bitDepth %d x %d y %d",img->NPixels,bitDepth,x,y);
+
+    return 0;
+}
+
+void MyFrame::CopyGuideErrorDataToShm(GuideErrorInfoToShm g)
+{
+
+    unsigned int mem_offset;
+    unsigned char copyIndicator;
+    unsigned int copyIndicatorAddress;
+    mem_offset = 1024;
+
+    mem_offset = mem_offset + sizeof(unsigned int);     //X
+    mem_offset = mem_offset + sizeof(unsigned int);     //Y
+    mem_offset = mem_offset + sizeof(unsigned char);    //bitDepth
+
+    // mem_offset = mem_offset + sizeof(char);
+    // mem_offset = mem_offset + sizeof(int);
+    // mem_offset = mem_offset + sizeof(double);
+    mem_offset = mem_offset + sizeof(int);
+    mem_offset = mem_offset + sizeof(int);
+    mem_offset = mem_offset + sizeof(int);
+
+    copyIndicatorAddress = mem_offset;
+
+    copyIndicator = 0x01;
+    memcpy(qBuffer + mem_offset, &copyIndicator, sizeof(unsigned char));
+    mem_offset = mem_offset + sizeof(unsigned char);
+
+    memcpy(qBuffer + mem_offset, &g.dRA, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.dDEC, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.SNR, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.MASS, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.RADUR, sizeof(int));
+    mem_offset = mem_offset + sizeof(int);
+    memcpy(qBuffer + mem_offset, &g.DECDUR, sizeof(int));
+    mem_offset = mem_offset + sizeof(int);
+    memcpy(qBuffer + mem_offset, &g.RADIR, sizeof(char));
+    mem_offset = mem_offset + sizeof(char);
+    memcpy(qBuffer + mem_offset, &g.DECDIR, sizeof(char));
+    mem_offset = mem_offset + sizeof(char);
+    memcpy(qBuffer + mem_offset, &g.RMSErrorX, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.RMSErrorY, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.RMSErrorTotal, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.PixelRatio, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &StarLostAlert, sizeof(bool));
+    mem_offset = mem_offset + sizeof(bool);
+    memcpy(qBuffer + mem_offset, &InGuiding, sizeof(bool));
+    mem_offset = mem_offset + sizeof(bool);
+
+    copyIndicator = 0x02;
+    qBuffer[copyIndicatorAddress] = copyIndicator;
+}
+
+void MyFrame::CopyGuiderRealTimeDataToShm(GuideRealTimeInfoToShm g)
+{
+    int mem_offset = 1024 + 200;
+
+    memcpy(qBuffer + mem_offset, &g.isSelected, sizeof(bool));
+    mem_offset = mem_offset + sizeof(bool);
+    memcpy(qBuffer + mem_offset, &g.SelectedStarX, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.SelectedStarY, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.showLockedCross, sizeof(bool));
+    mem_offset = mem_offset + sizeof(bool);
+    memcpy(qBuffer + mem_offset, &g.LockedPositionX, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+    memcpy(qBuffer + mem_offset, &g.LockedPositionY, sizeof(double));
+    mem_offset = mem_offset + sizeof(double);
+
+    memcpy(qBuffer + mem_offset, &g.MultiStarNumber, sizeof(unsigned char));
+    mem_offset = mem_offset + sizeof(unsigned char);
+    memcpy(qBuffer + mem_offset, g.MultiStarX, sizeof(g.MultiStarX));
+    mem_offset = mem_offset + sizeof(g.MultiStarX);
+    memcpy(qBuffer + mem_offset, g.MultiStarY, sizeof(g.MultiStarY));
+    mem_offset = mem_offset + sizeof(g.MultiStarY);
+}
+
 void MyFrame::SetComboBoxWidth(wxComboBox *pComboBox, unsigned int extra)
 {
     unsigned int i;
@@ -693,6 +872,7 @@ void MyFrame::GetExposureInfo(int *currExpMs, bool *autoExp) const
 
 static int dur_index(int duration)
 {
+    DEBUG_INFO("myframe.cpp | dur_index | %d ",duration);
     for (auto it = exposure_durations.begin(); it != exposure_durations.end(); ++it)
         if (duration == *it)
             return it - exposure_durations.begin();
@@ -701,6 +881,7 @@ static int dur_index(int duration)
 
 bool MyFrame::SetExposureDuration(int val)
 {
+    DEBUG_INFO("myframe.cpp | SetExposureDuration | %d ",val);
     if (val < 0)
     {
         // Auto
@@ -1645,7 +1826,9 @@ bool MyFrame::StopWorkerThread(WorkerThread*& pWorkerThread)
 void MyFrame::OnRequestExposure(wxCommandEvent& evt)
 {
     EXPOSE_REQUEST *req = (EXPOSE_REQUEST *) evt.GetClientData();
+    DEBUG_INFO("myframe.cpp | OnRequestExposure | start capture");
     bool error = GuideCamera::Capture(pCamera, req->exposureDuration, *req->pImage, req->options, req->subframe);
+    DEBUG_INFO("myframe.cpp | OnRequestExposure | end capture");
     req->error = error;
     req->pSemaphore->Post();
 }
@@ -1672,11 +1855,270 @@ void MyFrame::OnRequestMountMove(wxCommandEvent& evt)
 void MyFrame::OnStatusBarTimerEvent(wxTimerEvent& evt)
 {
     if (pGuider->IsGuiding())
-        m_statusbar->StatusMsg(_("Guiding"));
+        m_statusbar->StatusMsg(_("Guiding..."));
     else if (CaptureActive)
         m_statusbar->StatusMsg(_("Looping"));
     else
         m_statusbar->StatusMsg(wxEmptyString);
+}
+
+void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
+{
+    // shared memory
+
+    // DEBUG_INFO("myframe.cpp | OnShmTimerEvent");
+
+    if (enableShmCommunication == true)
+    {
+
+        unsigned int vendCommand;
+        unsigned int baseAddress;
+        uint8_t flag_command;
+        double s;
+
+        baseAddress = 3;
+
+        if (qBuffer[0] == 0x01)
+        { // detected the command byte change to 0x01
+
+            vendCommand = qBuffer[1] * 256 + qBuffer[2];
+
+            if (vendCommand == 0x01)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x01 | Get verison");
+
+                wxString version = PHDVERSION;
+                int length = version.length();
+
+                // date structure: qbuffer[3],qbuffer[4] is the string length
+                // qbuffer[5]......  is the context of the string.
+
+                unsigned char addr = 0;
+                memcpy(qBuffer + baseAddress + addr, &length, sizeof(uint16_t));
+                addr = addr + sizeof(uint16_t);
+
+                if (length > 0 && length < 1024)
+                {
+                    memcpy(qBuffer + baseAddress + addr, version, length);
+                    addr = addr + length;
+                }
+            }
+
+            else if (vendCommand == 0x02)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x02 | ClearCalibration");
+                pMount->ClearCalibration();
+            }
+
+            else if (vendCommand == 0x03)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x03 | Start Looping");
+                StartLooping();
+            }
+
+            else if (vendCommand == 0x04)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x04 | Stop Looping");
+                StopCapturing();
+            }
+
+            else if (vendCommand == 0x05)
+            {
+                bool error;
+                error = pFrame->AutoSelectStar();
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x05 | Auto Find Star | return : %d", error);
+            }
+
+            else if (vendCommand == 0x06)
+            {
+                bool error = StartGuiding();
+                pFrame->pGraphLog->ResetData();
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x06 | Start Guiding | return : %d", error);
+            }
+
+            else if (vendCommand == 0x07)
+            {
+                unsigned char rval;
+                rval = Guider::GetExposedState();
+                unsigned char addr = 0;
+                // qBuffer[baseAddress+addr]=rval;
+                memcpy(qBuffer + baseAddress + addr, &rval, sizeof(unsigned char));
+                addr = addr + sizeof(unsigned char);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x07 | Guider Exposed Status | return : %d", rval);
+            }
+
+            else if (vendCommand == 0x08)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x08 | Flip | return");
+                PauseType prev = pGuider->SetPaused(PAUSE_GUIDING);
+                // return 1 for success, 0 for failure
+                unsigned char rval = 1;
+                if (FlipCalibrationData())
+                {
+                    rval = 0;
+                }
+                pGuider->SetPaused(prev);
+            }
+
+            else if (vendCommand == 0x09)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x09 | DISCONNECT | return");
+                // pGearDialog->Shutdown(killed);
+                wxString errMsg;
+                unsigned char value;
+                unsigned char addr = 0;
+
+                memcpy(&value, qBuffer + baseAddress + addr, sizeof(unsigned char));
+                addr = addr + sizeof(unsigned char);
+
+                if (value == 0x00)
+                    pFrame->pGearDialog->DisconnectAll(&errMsg);
+                else if (value == 0xff)
+                    pFrame->pGearDialog->ConnectAll(&errMsg);
+
+                std::string aaa = std::string(errMsg.ToStdString());
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x09 | disconnect error message %s", aaa.c_str());
+
+                // return 1 for success, 0 for failure
+            }
+
+            else if (vendCommand == 0x0a)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0a | define camera name | return");
+                unsigned char addr = 0;
+                unsigned char stringlength;
+
+                unsigned char str[256];
+
+                memcpy(&stringlength, qBuffer + baseAddress + addr, sizeof(unsigned char));
+                addr = addr + sizeof(unsigned char);
+                memcpy(str, qBuffer + baseAddress + addr, stringlength);
+                addr = addr + stringlength;
+
+                wxString cameraName = wxString::FromAscii((const char *)str);
+
+                std::string aaa = std::string(cameraName.ToStdString());
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0a | cameraName %s", aaa.c_str());
+                pFrame->pGearDialog->SelectedCameraIDFromShm(cameraName);
+                // return 1 for success, 0 for failure
+            }
+
+            else if (vendCommand == 0x0b)
+            {
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0b | setExposureTime (ms) | ");
+                unsigned char addr = 0;
+                unsigned char stringlength;
+
+                unsigned int expTime;
+
+                memcpy(&expTime, qBuffer + baseAddress + addr, sizeof(unsigned int));
+                addr = addr + sizeof(unsigned int);
+
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0b | set exposure time %d", expTime);
+                if (expTime > 5000)
+                    expTime = 5000; // limit the guider exposure time from 0ms to 5000ms
+
+                pFrame->SetExposureDuration(expTime);
+                // pFrame->pGearDialog->SelectedCameraIDFromShm(cameraName);
+                //  return 1 for success, 0 for failure
+            }
+
+            else if (vendCommand == 0x0c)
+            {
+                // DEBUG_INFO("myframe.cpp | shared memory command | 0x0c | Is Use QHYCCDSDK ? | ");
+                unsigned char addr = 0;
+
+                unsigned int IsUseSDK;
+
+                memcpy(&IsUseSDK, qBuffer + baseAddress + addr, sizeof(unsigned int));
+                addr = addr + sizeof(unsigned int);
+
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0c | Is Use QHYCCDSDK ? %d", IsUseSDK);
+
+                // return 1 for true, 0 for false
+                if (IsUseSDK == 0)
+                {
+                    // pGearDialog->ChoiceCameraFromShm("INDI Camera");
+                }
+                else
+                {
+                    // pGearDialog->ChoiceCameraFromShm("QHY Camera");
+                }
+            }
+            else if (vendCommand == 0x0d)
+            {
+                // DEBUG_INFO("myframe.cpp | shared memory command | 0x0c | Is Use QHYCCDSDK ? | ");
+                unsigned char addr = 0;
+
+                int length;
+                // std::string Camera;
+                // int index;
+
+                // memcpy(&index, qBuffer + baseAddress + addr, sizeof(int));
+                // addr = addr + sizeof(int);
+
+                memcpy(&length, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0d | length ? |%d ", length);
+
+                std::vector<uint8_t> Camera_;
+                Camera_.resize(length);
+
+                memcpy(Camera_.data(), qBuffer + baseAddress + addr, length);
+                addr = addr + length;
+
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0d | WhichCamera ? %s", Camera_.data());
+
+                std::string Camera(Camera_.begin(), Camera_.end());
+
+                // return 1 for true, 0 for false
+                // pGearDialog->SetMatchingSelection(pGearDialog->m_pCameras, Camera);
+                pGearDialog->ChoiceCameraFromShm("", 0);
+                pGearDialog->OnChoiceScopeFromShm("", 3);
+                pGearDialog->SelectedCameraIDFromShm(Camera);
+            }
+            else if (vendCommand == 0x0e)
+            {
+                unsigned char addr = 0;
+                int index;
+                memcpy(&index, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0e | ChackControlStatus %d",index);
+                ControlStatus = 0;
+            }
+
+
+            qBuffer[0] = 0x00;
+        }
+
+        // return the realtime informations
+        baseAddress = 1024;
+    }
+
+    shmTimer.Start(10, wxTIMER_ONE_SHOT);
+}
+
+void MyFrame::getTimeNow(int index)
+{
+    // 获取当前时间点
+    auto now = std::chrono::system_clock::now();
+
+    // 将当前时间点转换为毫秒
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+
+    // 将毫秒时间戳转换为时间类型（std::time_t）
+    std::time_t time_now = ms / 1000;  // 将毫秒转换为秒
+
+    // 使用 std::strftime 函数将时间格式化为字符串
+    char buffer[80];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", std::localtime(&time_now));
+
+    // 添加毫秒部分
+    std::string formatted_time = buffer + std::to_string(ms % 1000);
+
+    // 打印带有当前时间的输出
+    std::cout << "TIME(ms): " << formatted_time << "," << index << std::endl;
+
 }
 
 void MyFrame::ScheduleExposure()
@@ -1939,6 +2381,7 @@ bool MyFrame::StartLooping()
         }
 
         StatusMsg(_("Looping"));
+        InGuiding = false;
         StartCapturing();
     }
     catch (const wxString& Msg)
@@ -2160,6 +2603,42 @@ void MyFrame::OnClose(wxCloseEvent& event)
     Destroy();
 }
 
+void MyFrame::OnCloseWithoutQuit(void)
+{
+    Debug.Write("MyFrame::OnClose proceeding\n");
+    DEBUG_INFO("MyFrame | OnCloseWithoutQuit");
+
+    StopCapturing();
+
+    bool killed = StopWorkerThread(m_pPrimaryWorkerThread);
+    if (StopWorkerThread(m_pSecondaryWorkerThread))
+        killed = true;
+
+    // disconnect all gear
+    pGearDialog->Shutdown(killed);
+
+    PHD2Updater::StopUpdater();
+
+    // stop the socket server and event server
+    StartServer(false);
+
+    GuideLog.CloseGuideLog();
+
+    pConfig->Global.SetString("/perspective", m_mgr.SavePerspective());
+    wxString geometry = wxString::Format("%c;%d;%d;%d;%d",
+                                         this->IsMaximized() ? '1' : '0',
+                                         this->GetSize().x, this->GetSize().y,
+                                         this->GetScreenPosition().x, this->GetScreenPosition().y);
+    pConfig->Global.SetString("/geometry", geometry);
+
+    if (help->GetFrame())
+        help->GetFrame()->Close();
+    delete help;
+    help = 0;
+
+    Destroy();
+}
+
 bool MyFrame::SetNoiseReductionMethod(int noiseReductionMethod)
 {
     bool bError = false;
@@ -2227,7 +2706,9 @@ bool MyFrame::SetDitherRaOnly(bool ditherRaOnly)
 
 void MyFrame::NotifyGuidingStarted()
 {
-    StatusMsg(_("Guiding"));
+    StatusMsg(_("Guiding-"));
+
+    InGuiding = true;
 
     m_guidingStarted = wxDateTime::UNow();
     m_guidingElapsed.Start();
@@ -2246,6 +2727,8 @@ void MyFrame::NotifyGuidingStopped()
 {
     assert(!pMount || !pMount->IsBusy());
     assert(!pSecondaryMount || !pSecondaryMount->IsBusy());
+
+    InGuiding = false;
 
     if (pMount)
         pMount->NotifyGuidingStopped();

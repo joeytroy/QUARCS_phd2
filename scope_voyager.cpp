@@ -91,7 +91,7 @@ Mount::MOVE_RESULT ScopeVoyager::Guide(GUIDE_DIRECTION direction, int duration)
         VoyagerClient.SetTimeout(2); // set to 2s timeout
         char msg[64], dir;
 
-        snprintf(msg, sizeof(msg), "RATE 100\n\n");
+        sprintf(msg,"RATE 100\n\n");
         VoyagerClient.Write(msg,strlen(msg));
         VoyagerClient.Read(&msg,10);
 
@@ -114,11 +114,11 @@ Mount::MOVE_RESULT ScopeVoyager::Guide(GUIDE_DIRECTION direction, int duration)
                 dir = 'W';
                 break;
         }
-        snprintf(msg, sizeof(msg), "MOVE %c\n\n", dir);
+        sprintf(msg,"MOVE %c\n\n",dir);
         VoyagerClient.Write(msg,strlen(msg));
         VoyagerClient.Read(&msg,10);
         WorkerThread::MilliSleep(duration, WorkerThread::INT_ANY);
-        snprintf(msg, sizeof(msg), "STOP %c\n\n", dir);
+        sprintf(msg,"STOP %c\n\n",dir);
         VoyagerClient.Write(msg,strlen(msg));
         VoyagerClient.Read(&msg,10);
     }

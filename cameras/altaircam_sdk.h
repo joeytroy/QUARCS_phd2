@@ -31,7 +31,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *
  */
-// altaircam.dll imported functions for dynamic loading, see cam_altair.cpp
+// AltairCam.DLL imported functions for dynamic loading, see cam_altair.cpp
 SDK(Close)
 SDK(Enum)
 SDK_OPT(EnumV2)

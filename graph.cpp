@@ -1229,6 +1229,8 @@ enum { GRAPH_BORDER = 5 };
 
 void GraphLogClientWindow::OnPaint(wxPaintEvent& WXUNUSED(evt))
 {
+    GuideErrorInfoToShm gErrorShm;
+
     wxAutoBufferedPaintDC dc(this);
 
     wxSize size(GetClientSize());
@@ -1328,7 +1330,7 @@ void GraphLogClientWindow::OnPaint(wxPaintEvent& WXUNUSED(evt))
     {
         unsigned int plot_length = GetItemCount();
         unsigned int start_item = m_history.size() - plot_length;
-
+        //draw correct pulse data
         if (m_showCorrections)
         {
             double ymagc;
@@ -1443,6 +1445,17 @@ void GraphLogClientWindow::OnPaint(wxPaintEvent& WXUNUSED(evt))
                 ++it;
             }
 
+            if(i==m_history.size()-1){  //only output the last one data
+             gErrorShm.dRA    = h.ra;
+             gErrorShm.dDEC   = h.dec;
+             gErrorShm.SNR    = h.starSNR;
+             gErrorShm.MASS   = h.starMass;
+             gErrorShm.RADUR  = h.raDur;
+             gErrorShm.DECDUR = h.decDur;
+             gErrorShm.RADIR  = h.raDir;
+             gErrorShm.DECDIR = h.decDir;      
+            }
+
             switch (m_mode)
             {
             case MODE_RADEC:
@@ -1535,6 +1548,15 @@ void GraphLogClientWindow::OnPaint(wxPaintEvent& WXUNUSED(evt))
         m_pRaRMS->SetLabel(rms_label(m_stats.rms_ra, sampling));
         m_pDecRMS->SetLabel(rms_label(m_stats.rms_dec, sampling));
         m_pTotRMS->SetLabel(rms_label(m_stats.rms_tot, sampling));
+
+        gErrorShm.RMSErrorX     = m_stats.rms_ra;
+        gErrorShm.RMSErrorY     = m_stats.rms_dec;
+        gErrorShm.RMSErrorTotal = m_stats.rms_tot;
+        gErrorShm.PixelRatio    = sampling;
+        gErrorShm.SelectedStarX = center.X;
+        gErrorShm.SelectedStarY = center.Y;
+
+        pFrame->CopyGuideErrorDataToShm(gErrorShm);
 
         if (m_stats.osc_alert)
         {

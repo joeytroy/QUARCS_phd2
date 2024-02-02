@@ -189,6 +189,7 @@ bool WorkerThread::HandleExpose(EXPOSE_REQUEST *req)
             {
                 throw ERROR_INFO("Capture failed");
             }
+            m_pFrame->CopyImageToShm(req->pImage);
         }
         else
         {

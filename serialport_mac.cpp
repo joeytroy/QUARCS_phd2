@@ -37,19 +37,15 @@
 #include "phd.h"
 #include <IOKit/serial/IOSerialKeys.h>
 
-#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 120000
-# define IOMainPort IOMasterPort
-#endif
-
 static kern_return_t createSerialIterator(io_iterator_t *serialIterator)
 {
     kern_return_t   kernResult;
     mach_port_t     masterPort;
     CFMutableDictionaryRef  classesToMatch;
     
-    if ((kernResult = IOMainPort(0, &masterPort)) != KERN_SUCCESS)
+    if ((kernResult = IOMasterPort(0, &masterPort)) != KERN_SUCCESS)
     {
-        printf("IOMainPort returned %d\n", kernResult);
+        printf("IOMasterPort returned %d\n", kernResult);
         return kernResult;
     }
     

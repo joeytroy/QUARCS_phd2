@@ -204,6 +204,7 @@ static wxToggleButton *MakeConnectBtn(wxWindow *parent, wxWindowID id)
 
 void GearDialog::Initialize()
 {
+    DEBUG_INFO("GearDialog::Initialize");
     wxSizerFlags sizerFlags       = wxSizerFlags().Align(wxALIGN_CENTER).Border(wxALL,2).Expand();
     wxSizerFlags sizerTextFlags   = wxSizerFlags().Align(wxALIGN_CENTER).Border(wxALL,2).Expand();
     wxSizerFlags sizerLabelFlags  = wxSizerFlags().Align(wxALIGN_RIGHT|wxALIGN_CENTER_VERTICAL).Border(wxALL, 2);
@@ -430,6 +431,7 @@ static wxString NewAoName(const wxString& oldname)
 
 void GearDialog::LoadGearChoices()
 {
+    DEBUG_INFO("LoadGearChoices");
     LoadCameras(m_pCameras);
     LoadMounts(m_pScopes);
     LoadAuxMounts(m_pAuxScopes);
@@ -481,6 +483,7 @@ int GearDialog::ShowGearDialog(bool autoConnect)
 
     if (autoConnect)
     {
+        DEBUG_INFO("ShowGearDialog | autoconnect : true");
         Debug.Write("gear_dialog: connect all (auto) calls OnButtonConnectAll\n");
 
         wxCommandEvent dummyEvent;
@@ -920,9 +923,14 @@ void GearDialog::OnChar(wxKeyEvent& evt)
 
 void GearDialog::OnChoiceCamera(wxCommandEvent& event)
 {
+    DEBUG_INFO("OnChoiceCamera");
     try
     {
-        wxString choice = m_pCameras->GetStringSelection();
+        //first remove the class of the previous built
+        wxString choice = m_pCameras->GetStringSelection();    //return the selected item from the list box
+        
+        std::string aaa = std::string(choice.ToStdString());
+        DEBUG_INFO("choice previous %s",aaa.c_str());
 
         delete m_pCamera;
         m_pCamera = nullptr;
@@ -930,6 +938,9 @@ void GearDialog::OnChoiceCamera(wxCommandEvent& event)
         UpdateGearPointers();
 
         m_pCamera = GuideCamera::Factory(choice);
+
+        aaa= std::string(choice.ToStdString());
+        DEBUG_INFO("choice after %s",aaa.c_str());
 
         Debug.AddLine(wxString::Format("Created new camera of type %s = %p", choice, m_pCamera));
 
@@ -944,6 +955,55 @@ void GearDialog::OnChoiceCamera(wxCommandEvent& event)
         if (!m_pCamera)
         {
             throw THROW_INFO("OnChoiceCamera: m_pCamera == NULL");
+        }
+    }
+    catch (const wxString& Msg)
+    {
+        POSSIBLY_UNUSED(Msg);
+    }
+
+    UpdateButtonState();
+
+    m_cameraUpdated = true;
+}
+
+void GearDialog::ChoiceCameraFromShm(const wxString& choice, int index)      //add by CJQ 2023.3.27
+{
+    m_lastCamera = pConfig->Profile.GetString("/camera/LastMenuChoice", _("None"));
+    SetMatchingSelection(m_pCameras, m_lastCamera);
+    m_pCameras->SetSelection(index);
+    // m_pScopes->SetSelection(3);
+    try
+    {
+        wxString choice_ = m_pCameras->GetStringSelection();    //return the selected item from the list box
+        
+        std::string aaa = std::string(choice_.ToStdString());
+        DEBUG_INFO("choice previous %s",aaa.c_str());
+
+        // delete the previous built class
+        delete m_pCamera;
+        m_pCamera = nullptr;
+
+        UpdateGearPointers();
+
+        m_pCamera = GuideCamera::Factory(choice_);
+
+        aaa = std::string(choice_.ToStdString());
+        DEBUG_INFO("choice after %s",aaa.c_str());
+
+        Debug.AddLine(wxString::Format("Created new camera of type %s = %p", choice_, m_pCamera));
+
+        if (pConfig->Profile.GetString("/camera/LastMenuChoice", wxEmptyString) != choice_)
+        {
+            pConfig->Profile.SetString("/camera/LastMenuChoice", choice_);
+            m_flushConfig = true;
+        }
+
+        m_selectCameraButton->Enable(m_pCamera && m_pCamera->CanSelectCamera());
+
+        if (!m_pCamera)
+        {
+            throw THROW_INFO("SetCameraType: m_pCamera == NULL");
         }
     }
     catch (const wxString& Msg)
@@ -983,17 +1043,37 @@ static wxString CameraSelectionKey(const wxString& camName)
 
 static wxString SelectedCameraId(const wxString& camName)
 {
+    //after click the select camera button will enter here 
+    DEBUG_INFO("SelectedCameraId");
     wxString key = CameraSelectionKey(camName);
     return pConfig->Profile.GetString(key, GuideCamera::DEFAULT_CAMERA_ID);
 }
 
 wxString GearDialog::SelectedCameraId() const
 {
+    DEBUG_INFO("SelectedCameraId()");
     return ::SelectedCameraId(m_lastCamera);
+}
+
+void GearDialog::SelectedCameraIDFromShm(wxString name)
+{
+     DEBUG_INFO("gear_dialog.cpp | set global cameraID from QHYCCD share memory command");
+     glCameraIdFromShm = name;
+    //  pConfig->Profile.SetString("/indi/INDIcam", glCameraIdFromShm);
+    //  pConfig->dev->SetValue(glCameraIdFromShm);
+    //  INDIConfig::dev->SetValue(glCameraIdFromShm);
+//  DoConnectCamera(false);
+    //  pConfig->Profile.SetString("/indi/INDIcam", glCameraIdFromShm);
+
+    // wxString errMsg;
+    // ConnectAll(&errMsg);
+    wxCommandEvent dummyEvent;
+    OnButtonConnectAll(dummyEvent);
 }
 
 void GearDialog::OnButtonSelectCamera(wxCommandEvent& event)
 {
+    DEBUG_INFO("OnButtonSelectCamera|start");
     if (!m_pCamera || !m_pCamera->CanSelectCamera())
         return;
 
@@ -1038,6 +1118,7 @@ void GearDialog::OnButtonSelectCamera(wxCommandEvent& event)
 
 void GearDialog::OnMenuSelectCamera(wxCommandEvent& event)
 {
+    DEBUG_INFO("OnMenuSelectCamera");
     unsigned int idx = event.GetId() - MENU_SELECT_CAMERA_BEGIN;
     if (idx < m_cameraIds.size())
     {
@@ -1053,6 +1134,7 @@ void GearDialog::OnMenuSelectCamera(wxCommandEvent& event)
 
 void GearDialog::OnButtonSetupCamera(wxCommandEvent& event)
 {
+    DEBUG_INFO("OnButtonSetupCamera");
     m_pCamera->ShowPropertyDialog();
 
     // camera setup may have changed camera name so re-load the camera list
@@ -1064,7 +1146,7 @@ void GearDialog::OnButtonSetupCamera(wxCommandEvent& event)
 bool GearDialog::DoConnectCamera(bool autoReconnecting)
 {
     bool canceled = false;
-
+    DEBUG_INFO("DoConnectCamera | start | autoReconnect");
     try
     {
         if (!m_pCamera)
@@ -1077,21 +1159,43 @@ bool GearDialog::DoConnectCamera(bool autoReconnecting)
             throw THROW_INFO("DoConnectCamera: called when connected");
         }
 
-        wxString newCam = m_pCameras->GetStringSelection();
+        wxString newCam = m_pCameras->GetStringSelection();  //newCam is the "QHY Camera"
+    
+        //wXString baseID = "QHY CCD QHY247C-b263424";
+        //wxString baseID = "QHY CCD QHY5III290M-58b";
+        wxString baseID = glCameraIdFromShm;  //QHY MOD
+
+        if(baseID!="")   newCam=wxString::Format("%s%s%s","INDI Camera [",baseID,"]");   //QHY MOD use glCameraIdFromShm replace it
+        //newCam="INDI Camera ["+baseID+"]";
+
+        std::string aaa = std::string(newCam.ToStdString()); 
+        DEBUG_INFO("newCam:%s",aaa.c_str());
 
         Debug.Write(wxString::Format(_T("gear_dialog: DoConnectCamera [%s]\n"), newCam));
 
         pFrame->StatusMsgNoTimeout(_("Connecting to Camera ..."));
 
-        wxString cameraId = ::SelectedCameraId(m_lastCamera);
+        wxString cameraId = ::SelectedCameraId(m_lastCamera);  //cameraId is "QHY5III178M-xxxxxxxxx"
+
+        if(baseID!="") cameraId=baseID;    //QHY MOD use glCameraIdFromShm replace it
+
+        aaa = std::string(cameraId.ToStdString());
+        DEBUG_INFO("cameraId:%s",aaa.c_str());
 
         Debug.Write(wxString::Format("Connecting to camera [%s] id = [%s]\n", newCam, cameraId));
 
         int profileBinning = m_pCamera->Binning;
+        DEBUG_INFO("Connect|start");
+        
+        //by QHY m_pCamera is something like myclient (indi myclient)
         if (m_pCamera->Connect(cameraId))
         {
             throw THROW_INFO("DoConnectCamera: connect failed");
         }
+
+        DEBUG_INFO("Connect|end");
+        aaa = std::string(cameraId.ToStdString());
+        DEBUG_INFO("After Connected:%s",aaa.c_str()); 
 
         // update camera pixel size from the driver, cam must be connected for reliable results
         double prevPixelSize = m_pCamera->GetProfilePixelSize();
@@ -1221,12 +1325,14 @@ bool GearDialog::DoConnectCamera(bool autoReconnecting)
 void GearDialog::OnButtonConnectCamera(wxCommandEvent& event)
 {
     Debug.Write("gear_dialog: OnButtonConnectCamera\n");
+    DEBUG_INFO("OnButtonConnectCamera | DoConnectCamera | false");
     DoConnectCamera(false);
 }
 
 bool GearDialog::ReconnectCamera()
 {
     Debug.Write("gear_dialog: ReconnectCamera\n");
+    DEBUG_INFO("OnButtonConnectCamera | DoConnectCamera | true");
     DoConnectCamera(true);
     bool err = !m_pCamera || !m_pCamera->Connected;
     return err;
@@ -1326,6 +1432,45 @@ void GearDialog::OnChoiceScope(wxCommandEvent& event)
     m_mountUpdated = true;
 }
 
+void GearDialog::OnChoiceScopeFromShm(const wxString& choice, int index)
+{
+    m_lastCamera = pConfig->Profile.GetString("/scope/LastMenuChoice", _("None"));
+    SetMatchingSelection(m_pScopes, m_lastCamera);
+    m_pScopes->SetSelection(index);
+    try
+    {
+        wxString choice = m_pScopes->GetStringSelection();
+
+        delete m_pScope;
+        m_pScope = nullptr;
+        UpdateGearPointers();
+
+        m_pScope = Scope::Factory(choice);
+        Debug.AddLine(wxString::Format("Created new scope of type %s = %p", choice, m_pScope));
+
+        if (pConfig->Profile.GetString("/scope/LastMenuChoice", wxEmptyString) != choice)
+        {
+            pConfig->Profile.SetString("/scope/LastMenuChoice", choice);
+            m_flushConfig = true;
+        }
+
+        if (!m_pScope)
+        {
+            throw THROW_INFO("OnChoiceScope: m_pScope == NULL");
+        }
+
+        m_ascomScopeSelected = choice.Contains("ASCOM");
+    }
+    catch (const wxString& Msg)
+    {
+        POSSIBLY_UNUSED(Msg);
+    }
+
+    UpdateButtonState();
+
+    m_mountUpdated = true;
+}
+
 void GearDialog::OnChoiceAuxScope(wxCommandEvent& event)
 {
     try
@@ -1382,13 +1527,14 @@ void GearDialog::OnButtonSetupAuxScope(wxCommandEvent& event)
 void GearDialog::OnButtonConnectScope(wxCommandEvent& event)
 {
     Debug.Write("gear_dialog: OnButtonConnectScope\n");
-
+    int errNum = 0;
     try
     {
         // m_pScope is NULL when scope selection is "None"
 
         if (m_pScope && m_pScope->IsConnected())
         {
+            errNum = 1;
             throw THROW_INFO("OnButtonConnectScope: called when connected");
         }
 
@@ -1400,6 +1546,7 @@ void GearDialog::OnButtonConnectScope(wxCommandEvent& event)
 
             if (m_pScope->Connect())
             {
+                errNum = 2;
                 throw THROW_INFO("OnButtonConnectScope: connect failed");
             }
 
@@ -1407,6 +1554,7 @@ void GearDialog::OnButtonConnectScope(wxCommandEvent& event)
             {
                 m_pScope->Disconnect();
                 wxMessageBox(wxString::Format(_("Mount does not support the required PulseGuide interface"), _("Error")));
+                errNum = 3;
                 throw THROW_INFO("OnButtonConnectScope: PulseGuide commands not supported");
             }
 
@@ -1422,6 +1570,8 @@ void GearDialog::OnButtonConnectScope(wxCommandEvent& event)
     }
     catch (const wxString& Msg)
     {
+        DEBUG_INFO("Why connect failed ? |%d ", errNum);
+
         POSSIBLY_UNUSED(Msg);
         pFrame->StatusMsg(_("Mount Connect Failed"));
         pFrame->UpdateStatusBarStateLabels();

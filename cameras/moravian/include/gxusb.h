@@ -26,9 +26,7 @@
 #define gbpPowerUtilization         12
 #define gbpGain                     13
 #define gbpElectronicShutter        14
-#define gbpGPS                      16
-#define gbpContinuousExposures      17
-#define gbpTrigger                  18
+#define gbpReadBeforeClose          15
 #define gbpConfigured              127
 #define gbpRGB                     128
 #define gbpCMY                     129

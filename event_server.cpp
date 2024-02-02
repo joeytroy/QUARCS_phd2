@@ -677,7 +677,7 @@ static void set_exposure(JObj& response, const json_value *params)
         return;
     }
 
-    bool ok = pFrame->SetExposureDuration(exp->int_value);
+    bool ok = pFrame->SetExposureDuration(exp->int_value);    //uint is ms
     if (ok)
     {
         response << jrpc_result(0);

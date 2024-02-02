@@ -33,12 +33,17 @@
 */
 
 #include "phd.h"
+#define QHY_CAMERA
 
 #if defined(QHY_CAMERA)
 
 #include "camera.h"
 #include "cam_qhy.h"
 #include "qhyccd.h"
+#include <thread>
+
+#include <iostream>
+#include <mutex>
 
 class Camera_QHY : public GuideCamera
 {
@@ -57,6 +62,7 @@ class Camera_QHY : public GuideCamera
     wxByte m_bpp;
 
 public:
+    std::mutex sendMutex;
 
     Camera_QHY();
     ~Camera_QHY();
@@ -91,6 +97,7 @@ static wxString GetQHYSDKVersion()
 
 static bool QHYSDKInit()
 {
+    DEBUG_INFO("QHYSDKInit");
     if (s_qhySdkInitDone)
         return false;
 
@@ -142,6 +149,7 @@ static bool QHYSDKInit()
 
 static void QHYSDKUninit()
 {
+    DEBUG_INFO("QHYSDKUnInit");
     if (s_qhySdkInitDone)
     {
         ReleaseQHYCCDResource();
@@ -151,6 +159,7 @@ static void QHYSDKUninit()
 
 Camera_QHY::Camera_QHY()
 {
+    DEBUG_INFO("Camera_QHY::Camera_QHY()");
     Connected = false;
     m_hasGuideOutput = true;
     HasGainControl = true;
@@ -189,6 +198,7 @@ int Camera_QHY::GetDefaultCameraGain()
 
 bool Camera_QHY::EnumCameras(wxArrayString& names, wxArrayString& ids)
 {
+    DEBUG_INFO("EnumCameras");
     if (QHYSDKInit())
         return true;
 
@@ -231,8 +241,12 @@ bool Camera_QHY::Connect(const wxString& camId)
 
     std::string qid;
 
+    std::string xxx_camId = std::string(camId.ToStdString());
+    DEBUG_INFO("%s",xxx_camId.c_str());
+
     if (camId == DEFAULT_CAMERA_ID)
     {
+        DEBUG_INFO("camId == DEFAULT_CAMERA_ID: yes");
         wxArrayString names, ids;
         EnumCameras(names, ids);
 
@@ -246,6 +260,7 @@ bool Camera_QHY::Connect(const wxString& camId)
     else
     {
         // scanning for cameras is required, otherwise OpenQHYCCD will fail
+        DEBUG_INFO("camId == DEFAULT_CAMERA_ID: no");
         int num_cams = ScanQHYCCD();
         Debug.Write(wxString::Format("QHY: found %d cameras\n", num_cams));
         qid = camId;
@@ -253,6 +268,7 @@ bool Camera_QHY::Connect(const wxString& camId)
 
     char *s = new char[qid.length() + 1];
     memcpy(s, qid.c_str(), qid.length() + 1);
+    DEBUG_INFO("%s",s);
     m_camhandle = OpenQHYCCD(s);
     delete[] s;
 
@@ -402,6 +418,49 @@ bool Camera_QHY::Disconnect()
 bool Camera_QHY::ST4PulseGuideScope(int direction, int duration)
 {
     uint32_t qdir;
+
+    DEBUG_INFO("ST4PulseGuideScope_SDK %d,%d",direction,duration);
+    
+   std::lock_guard<std::mutex> lock(sendMutex);
+    // 记录开始时间点
+    auto startTime = std::chrono::steady_clock::now();
+
+    // 循环等待直到 ControlStatus 变为 0 或超过 5 秒
+    while (pFrame->ControlStatus != 0)
+    {
+        // 计算经过的时间
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime).count();
+        // 如果超过 5 秒，强制将 ControlStatus 设置为 0
+        if (elapsedTime >= 5)
+        {
+            pFrame->ControlStatus = 0;
+            break; // 跳出循环
+        }
+        DEBUG_INFO("ST4PulseGuideScope_SDK_Status %d",pFrame->ControlStatus);
+        // 添加适当的延迟
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    DEBUG_INFO("ST4PulseGuideScope_SDK_Status %d",pFrame->ControlStatus);
+
+    pFrame->sdk_direction=direction;
+    pFrame->sdk_duration=duration;
+
+    unsigned int mem_offset=1024;
+ 
+    mem_offset=mem_offset+sizeof(unsigned int); 
+    mem_offset=mem_offset+sizeof(unsigned int); 
+    mem_offset=mem_offset+sizeof(unsigned char); 
+
+    int ControlInstruct = (pFrame->ControlNum << 24) | (pFrame->sdk_direction << 12) | pFrame->sdk_duration;
+
+    memcpy(pFrame->qBuffer+mem_offset,&ControlInstruct,sizeof(int));
+ 	mem_offset=mem_offset+sizeof(int); 
+    pFrame->getTimeNow(pFrame->ControlNum);
+    DEBUG_INFO("ST4PulseGuideScope_SDK %d,%d,%d",pFrame->ControlNum,direction,duration);
+
+    pFrame->ControlNum++;
+    pFrame->ControlStatus = 1;
 
     switch (direction)
     {
@@ -645,6 +704,7 @@ bool Camera_QHY::Capture(int duration, usImage& img, int options, const wxRect& 
 
 GuideCamera *QHYCameraFactory::MakeQHYCamera()
 {
+    DEBUG_INFO("MakeQHYCamera");
     return new Camera_QHY();
 }
 
