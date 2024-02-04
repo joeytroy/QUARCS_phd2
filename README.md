@@ -7,7 +7,7 @@
        wx-common wx3.0-i18n libindi-dev libnova-dev gettext zlib1g-dev libx11-dev \
        libcurl4-gnutls-dev
 
-编译过程：
+编译安装过程：
 -
 进到QUARCS_phd2工程目录下打开终端
 
