@@ -9,8 +9,9 @@
 
 编译过程：
 -
-在工程目录下建立  BUILD目录
+进到QUARCS_phd2工程目录下打开终端
 
+    mkdir BUILD
     cd BUILD
     cmake .. 
     make -j4
