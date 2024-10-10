@@ -1088,6 +1088,7 @@ bool GuiderMultiStar::IsValidSecondaryStarPosition(const PHD_Point& pt)
 
 void GuiderMultiStar::OnLClick(wxMouseEvent &mevent)
 {
+    DEBUG_INFO("GuiderMultiStar | OnLClick: %d, %d, %d ", mevent.GetModifiers(), mevent.m_x, mevent.m_y);
     try
     {
         if (mevent.GetModifiers() == wxMOD_CONTROL)
@@ -1132,6 +1133,7 @@ void GuiderMultiStar::OnLClick(wxMouseEvent &mevent)
             }
 
             double scaleFactor = ScaleFactor();
+            DEBUG_INFO("GuiderMultiStar | OnLClick | ScaleFactor : %f", scaleFactor);
             double StarX = (double) mevent.m_x / scaleFactor;
             double StarY = (double) mevent.m_y / scaleFactor;
 

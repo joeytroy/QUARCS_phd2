@@ -2086,7 +2086,28 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
                 DEBUG_INFO("myframe.cpp | shared memory command | 0x0e | ChackControlStatus %d",index);
                 ControlStatus = 0;
             }
-
+            else if(vendCommand == 0x0f)
+            {
+                unsigned char addr = 0;
+                int x,y;
+                memcpy(&x, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                memcpy(&y, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x0f | OnLClick: %d, %d ", x, y);
+                GuiderMultiStar *multiStarGuider = dynamic_cast<GuiderMultiStar *>(pGuider);
+                if (multiStarGuider)
+                {
+                    double scaleFactor = multiStarGuider->ScaleFactor();
+                    wxMouseEvent evt;
+                    wxPoint pos;
+                    pos.x = x * scaleFactor;
+                    pos.y = y * scaleFactor;
+                    evt.SetPosition(pos);
+                    DEBUG_INFO("evt: %d, %d ", evt.m_x, evt.m_y);
+                    multiStarGuider->OnLClick(evt);
+                }
+            }
 
             qBuffer[0] = 0x00;
         }

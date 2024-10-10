@@ -141,6 +141,16 @@ public:
 
     void LoadProfileSettings() override;
 
+    // void HandleMouseClick(double customX, double customY) {
+    //     wxMouseEvent mevent;
+    //     mevent.m_x = static_cast<double>(customX);
+    //     mevent.m_y = static_cast<double>(customY);
+
+    //     OnLClick(mevent); // 调用私有的 OnLClick
+    // }
+
+    void OnLClick(wxMouseEvent& evt);
+
 private:
     bool IsValidLockPosition(const PHD_Point& pt) final;
     bool IsValidSecondaryStarPosition(const PHD_Point& pt) final;
@@ -148,7 +158,7 @@ private:
     bool UpdateCurrentPosition(const usImage *pImage, GuiderOffset *ofs, FrameDroppedInfo *errorInfo) final;
     bool SetCurrentPosition(const usImage *pImage, const PHD_Point& position) final;
 
-    void OnLClick(wxMouseEvent& evt);
+    // void OnLClick(wxMouseEvent& evt);
 
     void SaveStarFITS();
 
