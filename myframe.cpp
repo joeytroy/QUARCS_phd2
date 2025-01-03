@@ -341,7 +341,7 @@ MyFrame::MyFrame()
     pGraphLog = new GraphLogWindow(this);
     m_mgr.AddPane(pGraphLog, wxAuiPaneInfo().
         Name(_T("GraphLog")).Caption(_("History")).
-        Hide());
+        Show());
 
     pStatsWin = new StatsWindow(this);
     m_mgr.AddPane(pStatsWin, wxAuiPaneInfo().
@@ -433,8 +433,8 @@ MyFrame::MyFrame()
     Menubar->Check(MENU_TOOLBAR, panel_state);
 
     panel_state = m_mgr.GetPane(_T("GraphLog")).IsShown();
-    pGraphLog->SetState(panel_state);
-    Menubar->Check(MENU_GRAPH, panel_state);
+    pGraphLog->SetState(true);
+    Menubar->Check(MENU_GRAPH, true);
 
     panel_state = m_mgr.GetPane(_T("Stats")).IsShown();
     pStatsWin->SetState(panel_state);
@@ -1867,6 +1867,7 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
     // shared memory
 
     // DEBUG_INFO("myframe.cpp | OnShmTimerEvent");
+    m_mgr.GetPane(_T("GraphLog")).Show().Bottom().Position(0).MinSize(-1, 240);
 
     if (enableShmCommunication == true)
     {
@@ -2051,11 +2052,6 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
                 unsigned char addr = 0;
 
                 int length;
-                // std::string Camera;
-                // int index;
-
-                // memcpy(&index, qBuffer + baseAddress + addr, sizeof(int));
-                // addr = addr + sizeof(int);
 
                 memcpy(&length, qBuffer + baseAddress + addr, sizeof(int));
                 addr = addr + sizeof(int);
@@ -2073,9 +2069,46 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
 
                 // return 1 for true, 0 for false
                 // pGearDialog->SetMatchingSelection(pGearDialog->m_pCameras, Camera);
-                pGearDialog->ChoiceCameraFromShm("", 0);
-                pGearDialog->OnChoiceScopeFromShm("", 3);
-                pGearDialog->SelectedCameraIDFromShm(Camera);
+
+                int INDIcamera, Simulator;
+                for (size_t i = 0; i < GuideCamera::GuideCameraList().GetCount(); i++) {
+                    pGearDialog->m_pCameras->SetSelection(i);
+                    wxString choice_ = pGearDialog->m_pCameras->GetStringSelection();
+
+                    if(choice_.Find(_T("INDI")) != wxNOT_FOUND) {
+                        INDIcamera = i;
+                    } else if(choice_.Find(_T("Simulator")) != wxNOT_FOUND) {
+                        Simulator = i;
+                    }
+                }
+
+                DEBUG_INFO("INDI Camera found at index: %d", INDIcamera);
+                DEBUG_INFO("Simulator found at index: %d", Simulator);
+
+
+                int OnCameraIndex;
+                for (size_t i = 0; i < Scope::MountList().GetCount(); i++) {
+                    pGearDialog->m_pScopes->SetSelection(i);
+                    wxString choice_ = pGearDialog->m_pScopes->GetStringSelection();
+
+                    if(choice_.Find(_T("camera")) != wxNOT_FOUND) {
+                        OnCameraIndex = i;
+                    }
+                }
+
+                DEBUG_INFO("On-camera found at index: %d", OnCameraIndex);
+
+                if(Camera.find("Simulator") != std::string::npos) {
+                    DEBUG_INFO("Camera is CCD Simulator. %s", Camera_.data());
+                    pGearDialog->ChoiceCameraFromShm("", Simulator);
+                    pGearDialog->OnChoiceScopeFromShm("", OnCameraIndex);
+                    pGearDialog->SelectedCameraIDFromShm(Camera);
+                } else {
+                    DEBUG_INFO("Camera is not CCD Simulator. %s", Camera_.data());
+                    pGearDialog->ChoiceCameraFromShm("", INDIcamera);
+                    pGearDialog->OnChoiceScopeFromShm("", OnCameraIndex);
+                    pGearDialog->SelectedCameraIDFromShm(Camera);
+                }
             }
             else if (vendCommand == 0x0e)
             {
@@ -2107,6 +2140,15 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
                     DEBUG_INFO("evt: %d, %d ", evt.m_x, evt.m_y);
                     multiStarGuider->OnLClick(evt);
                 }
+            }
+            else if(vendCommand == 0x10)
+            {
+                unsigned char addr = 0;
+                int FocalLength;
+                memcpy(&FocalLength, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x10 | FocalLength: %d ", FocalLength);
+                pFrame->SetFocalLength(FocalLength);
             }
 
             qBuffer[0] = 0x00;

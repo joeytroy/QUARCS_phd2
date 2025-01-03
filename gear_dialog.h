@@ -39,6 +39,7 @@ class wxGridBagSizer;
 
 class GearDialog : public wxDialog
 {
+public:
     GuideCamera *m_pCamera;
     Scope       *m_pScope;
     Scope       *m_pAuxScope;
