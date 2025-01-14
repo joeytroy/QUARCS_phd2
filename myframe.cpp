@@ -2150,6 +2150,44 @@ void MyFrame::OnShmTimerEvent(wxTimerEvent &evt)
                 DEBUG_INFO("myframe.cpp | shared memory command | 0x10 | FocalLength: %d ", FocalLength);
                 pFrame->SetFocalLength(FocalLength);
             }
+            else if(vendCommand == 0x11)
+            {
+                unsigned char addr = 0;
+                bool isMultiStar;
+                memcpy(&isMultiStar, qBuffer + baseAddress + addr, sizeof(bool));
+                addr = addr + sizeof(bool);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x11 | MultiStarGuider: %d ", isMultiStar);
+                // pFrame->SetFocalLength(FocalLength);
+                pFrame->pGuider->SetMultiStarMode(isMultiStar); 
+            }
+            else if(vendCommand == 0x12)
+            {
+                unsigned char addr = 0;
+                double PixelSize;
+                memcpy(&PixelSize, qBuffer + baseAddress + addr, sizeof(double));
+                addr = addr + sizeof(double);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x12 | PixelSize: %d ", PixelSize);
+                pCamera->SetCameraPixelSize(PixelSize);
+            }
+            else if(vendCommand == 0x13)
+            {
+                unsigned char addr = 0;
+                int CameraGain;
+                memcpy(&CameraGain, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x12 | CameraGain: %d ", CameraGain);
+                pCamera->SetCameraGain(CameraGain);
+            }
+            else if(vendCommand == 0x14)
+            {
+                unsigned char addr = 0;
+                int stepSize;
+                memcpy(&stepSize, qBuffer + baseAddress + addr, sizeof(int));
+                addr = addr + sizeof(int);
+                DEBUG_INFO("myframe.cpp | shared memory command | 0x14 | CalibrationDuration: %d ", stepSize);
+                Scope *scope = TheScope();
+                scope->SetCalibrationDuration(stepSize);
+            }
 
             qBuffer[0] = 0x00;
         }
