@@ -2,7 +2,7 @@
 
 <img align="left" src="https://www.raspberrypi.com/app/uploads/2020/06/raspberrry_pi_logo.png" width="48">
 
-These instructions are written for **Ubuntu 24.04.1 LTS Server (64-bit) ARM** for **Raspberry Pi Models** Please make sure you have already installed the **QUARCS_QT-SeverProgram or your install will not work correctly.
+These instructions are written for **Ubuntu 24.04.1 LTS Server (64-bit) ARM** for **Raspberry Pi Models** Please make sure you have already installed the **QUARCS_QT-SeverProgram** or your install will not work correctly.
 
 ---
 
