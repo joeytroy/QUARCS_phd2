@@ -153,6 +153,8 @@ add_subdirectory(contributions/MPI_IS_gaussian_process tmp_gaussian_process)
 # include_directories(${wxWidgets_INCLUDE_DIRS})
 include_directories(${phd_src_dir}/cameras/)
 include_directories(${phd_src_dir})
+include_directories(/usr/local/include)
+link_directories(/usr/local/lib)
 
 
 
@@ -776,7 +778,7 @@ elseif(UNIX)
    ${guiding_SRC}
    ${phd2_SRC}
    )
-  target_link_libraries(phd2 X11)
+  target_link_libraries(phd2 X11 qhyccd)
 
   set_target_properties(
     phd2
